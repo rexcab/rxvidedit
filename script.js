@@ -436,6 +436,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}. Export requires a PHP server with FFmpeg.`);
+      }
       const data = await res.json();
       if (!data.ok) {
         setProgressUI({ status: 'error', percent: 0, error: data.error || 'Export failed.' });
@@ -449,7 +452,11 @@
         });
       }
     } catch (err) {
-      setProgressUI({ status: 'error', percent: 0, error: 'Export failed. Check the FFmpeg configuration.' });
+      setProgressUI({
+        status: 'error',
+        percent: 0,
+        error: err.message || 'Export failed. Ensure PHP and FFmpeg are configured on your server.'
+      });
     } finally {
       if (pollTimer) {
         clearInterval(pollTimer);
