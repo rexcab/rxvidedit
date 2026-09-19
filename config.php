@@ -7,8 +7,11 @@
 // Change this if FFmpeg is not found (Apache often has a limited PATH).
 // Examples:
 // $ffmpegPath = 'C:/ffmpeg/bin/ffmpeg.exe';
-// $ffmpegPath = 'ffmpeg'; // if ffmpeg is on system PATH
-$ffmpegPath = 'C:/Users/rexcab/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.1-full_build/bin/ffmpeg.exe';
+if (PHP_OS_FAMILY === 'Windows') {
+    $ffmpegPath = 'C:/Users/rexcab/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.1-full_build/bin/ffmpeg.exe';
+} else {
+    $ffmpegPath = getenv('FFMPEG_PATH') ?: 'ffmpeg';
+}
 
 $tempDir   = __DIR__ . '/temp';
 $outputDir = __DIR__ . '/output';
