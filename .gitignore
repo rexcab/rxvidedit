@@ -1,0 +1,12 @@
+# Output and Temporary files
+temp/*
+!temp/.htaccess
+output/*
+!output/.htaccess
+
+# OS / Editor Files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
