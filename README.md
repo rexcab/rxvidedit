@@ -20,3 +20,4 @@ A modern creator suite of browser-based motion design and asset tools built for 
 - Dedicated visitor monitoring panel at `/admin.php`.
 - Tracks daily, monthly, and all-time traffic with bot & UptimeRobot filtering.
 - Automatic FIFO queue maintaining the latest 10 rendered MP4 videos.
+

@@ -23,3 +23,4 @@ RUN mkdir -p /var/www/html/countNumber/output /var/www/html/countNumber/temp /va
 
 EXPOSE 80
 CMD ["apache2-foreground"]
+
