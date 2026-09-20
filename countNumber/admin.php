@@ -90,6 +90,14 @@ if ($isLoggedIn) {
     $totalStorageMB = round($outputStorage['mb'] + $tempStorage['mb'], 2);
     $totalFiles = $outputStorage['count'] + $tempStorage['count'];
 }
+
+// Dynamically determine relative links whether executed at root or in countNumber/
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+$isSubdir = (basename($scriptDir) === 'countNumber');
+$homeUrl = $isSubdir ? '../index.php' : 'index.php';
+$counterUrl = $isSubdir ? 'index.php' : 'countNumber/';
+$selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -551,11 +559,11 @@ if ($isLoggedIn) {
         </div>
       </div>
       <div class="dash-actions">
-        <a href="index.php" class="btn-action" target="_blank">🎬 Number Counter</a>
-        <a href="home.php" class="btn-action" target="_blank">🏠 Homepage</a>
-        <a href="admin.php?action=export_csv" class="btn-action">📥 Export CSV</a>
-        <a href="admin.php?action=purge_storage" onclick="return confirm('Purge all generated video output and temp files from server disk now?')" class="btn-action" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Clean Output and Temp folders">🧹 Purge Storage (<?= $totalStorageMB ?> MB)</a>
-        <a href="admin.php?action=logout" class="btn-action btn-danger">Log Out</a>
+        <a href="<?= $counterUrl ?>" class="btn-action" target="_blank">🎬 Number Counter</a>
+        <a href="<?= $homeUrl ?>" class="btn-action" target="_blank">🏠 Homepage</a>
+        <a href="<?= $selfUrl ?>?action=export_csv" class="btn-action">📥 Export CSV</a>
+        <a href="<?= $selfUrl ?>?action=purge_storage" onclick="return confirm('Purge all generated video output and temp files from server disk now?')" class="btn-action" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Clean Output and Temp folders">🧹 Purge Storage (<?= $totalStorageMB ?> MB)</a>
+        <a href="<?= $selfUrl ?>?action=logout" class="btn-action btn-danger">Log Out</a>
       </div>
     </header>
 
