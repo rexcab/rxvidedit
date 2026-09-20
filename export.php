@@ -342,6 +342,10 @@ try {
     deleteDir($jobDir);
     @unlink($ffLog);
 
+    // Keep only the latest 10 MP4 files (FIFO: remove oldest if > 10)
+    enforceMaxOutputFiles($maxOutputFiles ?? 10);
+
+
     writeProgress($progressFile, [
         'ok' => true,
         'status' => 'done',

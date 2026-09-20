@@ -597,7 +597,9 @@ $defaultFont = isset($fonts['Montserrat Bold']) ? 'Montserrat Bold' : (array_key
 
   <script>
     window.WEB_FONTS = <?= json_encode(array_keys($webFonts)) ?>;
+    window.RX_PAGE_NAME = 'number-counter';
   </script>
   <script src="script.js"></script>
+  <script src="tracker.js" async></script>
 </body>
 </html>

@@ -13,12 +13,21 @@ if (PHP_OS_FAMILY === 'Windows') {
     $ffmpegPath = getenv('FFMPEG_PATH') ?: 'ffmpeg';
 }
 
+// Admin Panel Configuration (override with environment variables on Render)
+$adminUsername = getenv('ADMIN_USERNAME') ?: 'admin';
+$adminPassword = getenv('ADMIN_PASSWORD') ?: 'admin123';
+
+
 $tempDir   = __DIR__ . '/temp';
 $outputDir = __DIR__ . '/output';
 $fontsDir  = __DIR__ . '/fonts';
 
-// Max age of temp/output files (seconds)
-$cleanupMaxAge = 3600;
+// Maximum MP4 video files to keep in output/ (FIFO: oldest is deleted when 11th arrives)
+$maxOutputFiles = 10;
+
+// Max age of temporary logs/progress in temp/ (seconds)
+$cleanupMaxAge = 86400;
+
 
 /** Windows system fonts are prioritized in the font picker. */
 $builtinFonts = [
@@ -356,14 +365,14 @@ function ffmpegExists(): bool {
 }
 
 function cleanupOldFiles(): void {
-    global $tempDir, $outputDir, $cleanupMaxAge;
+    global $tempDir, $outputDir, $cleanupMaxAge, $maxOutputFiles;
     $now = time();
-    foreach ([$tempDir, $outputDir] as $dir) {
-        if (!is_dir($dir)) {
-            continue;
-        }
-        foreach (glob($dir . '/*') ?: [] as $path) {
-            if (basename($path) === '.htaccess') {
+
+    // Clean temp directory for files older than $cleanupMaxAge
+    if (is_dir($tempDir)) {
+        foreach (glob($tempDir . '/*') ?: [] as $path) {
+            $base = basename($path);
+            if ($base === '.htaccess' || $base === '.gitkeep') {
                 continue;
             }
             if (is_file($path) && ($now - filemtime($path)) > $cleanupMaxAge) {
@@ -374,7 +383,53 @@ function cleanupOldFiles(): void {
             }
         }
     }
+
+    // Enforce 10-file maximum in output/ (FIFO: oldest deleted when > 10)
+    enforceMaxOutputFiles($maxOutputFiles ?? 10);
 }
+
+/**
+ * Enforce maximum saved MP4 videos in output/ directory.
+ * Implements FIFO (First In, First Out): if count > $maxFiles,
+ * removes the oldest modified file(s) so only the latest $maxFiles remain.
+ */
+function enforceMaxOutputFiles(int $maxFiles = 10): int {
+    global $outputDir, $tempDir;
+    if (!is_dir($outputDir)) {
+        return 0;
+    }
+
+    $files = glob($outputDir . '/*.mp4') ?: [];
+    if (count($files) <= $maxFiles) {
+        return 0;
+    }
+
+    // Sort by file modification time (oldest first)
+    usort($files, function ($a, $b) {
+        return filemtime($a) - filemtime($b);
+    });
+
+    $deleted = 0;
+    while (count($files) > $maxFiles) {
+        $oldest = array_shift($files);
+        if (is_file($oldest)) {
+            @unlink($oldest);
+            $deleted++;
+
+            // Clean up associated temp progress and log files
+            $jobId = pathinfo($oldest, PATHINFO_FILENAME);
+            if (!empty($jobId)) {
+                $json = $tempDir . '/' . $jobId . '.json';
+                if (is_file($json)) @unlink($json);
+                $log = $tempDir . '/' . $jobId . '_ffmpeg.log';
+                if (is_file($log)) @unlink($log);
+            }
+        }
+    }
+
+    return $deleted;
+}
+
 
 function deleteDir(string $dir): void {
     if (!is_dir($dir)) {
@@ -389,6 +444,57 @@ function deleteDir(string $dir): void {
     }
     @rmdir($dir);
 }
+
+function getDirSize(string $dir): array {
+    $size = 0;
+    $count = 0;
+    if (is_dir($dir)) {
+        foreach (glob($dir . '/*') ?: [] as $path) {
+            $base = basename($path);
+            if ($base === '.htaccess' || $base === '.gitkeep') {
+                continue;
+            }
+            if (is_file($path)) {
+                $size += filesize($path);
+                $count++;
+            } elseif (is_dir($path)) {
+                $sub = getDirSize($path);
+                $size += $sub['size'];
+                $count += $sub['count'];
+            }
+        }
+    }
+    return [
+        'bytes' => $size,
+        'count' => $count,
+        'mb'    => round($size / (1024 * 1024), 2)
+    ];
+}
+
+function purgeStorageFiles(): int {
+    global $tempDir, $outputDir;
+    $deleted = 0;
+    foreach ([$tempDir, $outputDir] as $dir) {
+        if (!is_dir($dir)) {
+            continue;
+        }
+        foreach (glob($dir . '/*') ?: [] as $path) {
+            $base = basename($path);
+            if ($base === '.htaccess' || $base === '.gitkeep') {
+                continue;
+            }
+            if (is_file($path)) {
+                @unlink($path);
+                $deleted++;
+            } elseif (is_dir($path)) {
+                deleteDir($path);
+                $deleted++;
+            }
+        }
+    }
+    return $deleted;
+}
+
 
 function hexToRgb(string $hex): array {
     $hex = ltrim($hex, '#');

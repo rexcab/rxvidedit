@@ -11,14 +11,20 @@ if ($jobId === '') {
 $file = $outputDir . '/' . $jobId . '.mp4';
 if (!is_file($file)) {
     http_response_code(404);
-    echo 'File not found. Export again.';
+    echo 'File not found or already downloaded. Please export again.';
     exit;
 }
 
+// Clean up any other files older than 5 minutes
 cleanupOldFiles();
 
+// Serve the file to the browser
 header('Content-Type: video/mp4');
 header('Content-Length: ' . filesize($file));
 header('Content-Disposition: attachment; filename="number-counter.mp4"');
-header('Cache-Control: no-store');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+
 readfile($file);
+flush();
+exit;
+

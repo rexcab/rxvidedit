@@ -17,9 +17,11 @@ RUN a2enmod rewrite
 COPY . /var/www/html/
 
 # Setup working directories and permissions
-RUN mkdir -p /var/www/html/output /var/www/html/temp \
+RUN mkdir -p /var/www/html/output /var/www/html/temp /var/www/html/data \
     && chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/output /var/www/html/temp
+    && chmod -R 775 /var/www/html/output /var/www/html/temp /var/www/html/data
+
 
 EXPOSE 80
 CMD ["apache2-foreground"]
+
