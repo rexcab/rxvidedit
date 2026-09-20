@@ -13,13 +13,15 @@ RUN apt-get update && apt-get install -y \
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
 
-# Copy all project files (Root homepage + countNumber tool)
+# Copy project files
 COPY . /var/www/html/
 
-# Setup working directories and permissions for the tool
-RUN mkdir -p /var/www/html/countNumber/output /var/www/html/countNumber/temp /var/www/html/countNumber/data \
+# Setup working directories and permissions
+RUN mkdir -p /var/www/html/output /var/www/html/temp /var/www/html/data \
     && chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/countNumber/output /var/www/html/countNumber/temp /var/www/html/countNumber/data
+    && chmod -R 775 /var/www/html/output /var/www/html/temp /var/www/html/data
+
 
 EXPOSE 80
 CMD ["apache2-foreground"]
+

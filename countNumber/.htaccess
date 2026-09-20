@@ -1,2 +1,3 @@
 # Ensure Apache prioritizes index.php
 DirectoryIndex index.php index.html
+

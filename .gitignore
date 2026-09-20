@@ -1,11 +1,11 @@
 # Output and Temporary files
-temp/*
-!temp/.htaccess
-output/*
-!output/.htaccess
-data/*.db
-data/*.sqlite
-!data/.gitkeep
+countNumber/temp/*
+!countNumber/temp/.htaccess
+countNumber/output/*
+!countNumber/output/.htaccess
+countNumber/data/*.db
+countNumber/data/*.sqlite
+!countNumber/data/.gitkeep
 
 # OS / Editor Files
 .DS_Store
@@ -13,4 +13,3 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
-
