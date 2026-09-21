@@ -4,6 +4,8 @@
  * Zero-configuration local database for visitor tracking.
  */
 
+date_default_timezone_set('Asia/Manila');
+
 class AnalyticsDB {
     private static ?PDO $pdo = null;
 
@@ -115,15 +117,16 @@ class AnalyticsDB {
         $refStmt = $pdo->query("SELECT referrer, COUNT(*) as total FROM page_views GROUP BY referrer ORDER BY total DESC LIMIT 8");
         $referrers = $refStmt->fetchAll();
 
-        // Last 14 Days Trend
+        // Last 14 Days Trend (Manila Timezone)
+        $startDate = date('Y-m-d', strtotime('-13 days'));
         $trendStmt = $pdo->prepare("
             SELECT visit_date, COUNT(*) as total, COUNT(DISTINCT visitor_hash) as unique_v
             FROM page_views
-            WHERE visit_date >= date('now', '-13 days')
+            WHERE visit_date >= :startDate
             GROUP BY visit_date
             ORDER BY visit_date ASC
         ");
-        $trendStmt->execute();
+        $trendStmt->execute([':startDate' => $startDate]);
         $trendRaw = $trendStmt->fetchAll();
 
         // Fill in missing days so chart always has full 14 continuous days

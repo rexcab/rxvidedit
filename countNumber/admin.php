@@ -8,6 +8,25 @@ session_start();
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/analytics_db.php';
 
+// Set timezone to Philippine Standard Time (PHT / UTC+8)
+date_default_timezone_set('Asia/Manila');
+
+/**
+ * Convert UTC SQLite timestamp to Philippine Time (PHT / UTC+8).
+ */
+function formatPhtTime(?string $utcDateStr): string {
+    if (empty($utcDateStr)) {
+        return '-';
+    }
+    try {
+        $dt = new DateTime($utcDateStr, new DateTimeZone('UTC'));
+        $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+        return $dt->format('Y-m-d h:i:s A'); // e.g. 2026-09-21 11:48:57 PM
+    } catch (\Exception $e) {
+        return $utcDateStr;
+    }
+}
+
 // Handle Logout
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     unset($_SESSION['rx_admin_logged_in']);
@@ -26,12 +45,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="rxwithcode_analytics_' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID', 'Page', 'Device', 'Referrer', 'Date', 'Month', 'Timestamp']);
+    fputcsv($out, ['ID', 'Page', 'Device', 'Referrer', 'Date (PHT)', 'Month (PHT)', 'Timestamp (PHT)']);
     
     $pdo = AnalyticsDB::getPDO();
     $stmt = $pdo->query("SELECT id, page, device, referrer, visit_date, visit_month, created_at FROM page_views ORDER BY id DESC LIMIT 5000");
-    while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-        fputcsv($out, $row);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($out, [
+            $row['id'],
+            $row['page'],
+            $row['device'],
+            $row['referrer'],
+            $row['visit_date'],
+            $row['visit_month'],
+            formatPhtTime($row['created_at'])
+        ]);
     }
     fclose($out);
     exit;
@@ -747,11 +774,14 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
 
     <!-- Recent Activity Log -->
     <div class="section-card" style="margin-top:20px;">
-      <div class="section-title">🕒 Recent Visitor Activity (Last 25 Views)</div>
+      <div class="section-title">
+        <span>🕒 Recent Visitor Activity (Last 25 Views)</span>
+        <span style="font-size:0.8rem; font-weight:normal; color:var(--text-muted);">Timezone: Philippines (PHT / UTC+8)</span>
+      </div>
       <table class="breakdown-table">
         <thead>
           <tr>
-            <th>Time</th>
+            <th>Time (PHT)</th>
             <th>Page / Tool</th>
             <th>Device</th>
             <th>Referrer</th>
@@ -764,7 +794,7 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
             <?php foreach ($stats['recent'] as $log): ?>
               <tr>
                 <td style="color:var(--text-muted); font-size:0.8rem; font-family:'JetBrains Mono',monospace; white-space:nowrap;">
-                  <?= htmlspecialchars($log['created_at']) ?>
+                  <?= htmlspecialchars(formatPhtTime($log['created_at'])) ?>
                 </td>
                 <td><span class="pill-page"><?= htmlspecialchars($log['page']) ?></span></td>
                 <td><span class="pill-device"><?= htmlspecialchars($log['device']) ?></span></td>

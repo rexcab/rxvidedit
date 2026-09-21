@@ -4,6 +4,10 @@
  * Change $ffmpegPath if FFmpeg is not in your PATH.
  */
 
+// Timezone: Philippine Standard Time (PHT / UTC+8)
+date_default_timezone_set('Asia/Manila');
+
+
 // Change this if FFmpeg is not found (Apache often has a limited PATH).
 // Examples:
 // $ffmpegPath = 'C:/ffmpeg/bin/ffmpeg.exe';

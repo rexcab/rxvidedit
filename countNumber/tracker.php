@@ -5,6 +5,8 @@
  * Filters out bots and monitoring pingers (e.g. UptimeRobot).
  */
 
+date_default_timezone_set('Asia/Manila');
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
