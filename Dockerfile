@@ -1,13 +1,14 @@
 FROM php:8.2-apache
 
-# Install FFmpeg and required image libraries
+# Install FFmpeg, image libraries, and PostgreSQL driver (for Supabase)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
+    libpq-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) gd \
+    && docker-php-ext-install -j$(nproc) gd pdo pdo_pgsql \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache mod_rewrite & allow .htaccess overrides
