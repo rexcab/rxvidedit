@@ -1,8 +1,9 @@
-<?php
+﻿<?php
 /**
  * Analytics Database Handler
  * Uses Supabase (PostgreSQL) when DATABASE_URL env var is set.
  * Falls back to local SQLite for local development.
+ * Supports cookie-based visitor ID & Returning vs New visitor tracking.
  */
 
 date_default_timezone_set('Asia/Manila');
@@ -63,18 +64,23 @@ class AnalyticsDB {
         if (self::$driver === 'pgsql') {
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS page_views (
-                    id          BIGSERIAL PRIMARY KEY,
-                    page        TEXT NOT NULL,
+                    id           BIGSERIAL PRIMARY KEY,
+                    page         TEXT NOT NULL,
                     visitor_hash TEXT NOT NULL,
-                    device      TEXT NOT NULL DEFAULT 'Desktop',
-                    referrer    TEXT NOT NULL DEFAULT 'Direct',
-                    visit_date  TEXT NOT NULL,
-                    visit_month TEXT NOT NULL,
-                    created_at  TIMESTAMP DEFAULT NOW()
+                    device       TEXT NOT NULL DEFAULT 'Desktop',
+                    referrer     TEXT NOT NULL DEFAULT 'Direct',
+                    visit_date   TEXT NOT NULL,
+                    visit_month  TEXT NOT NULL,
+                    created_at   TIMESTAMP DEFAULT NOW(),
+                    visitor_id   TEXT,
+                    is_returning INTEGER DEFAULT 0
                 );
+                ALTER TABLE page_views ADD COLUMN IF NOT EXISTS visitor_id TEXT;
+                ALTER TABLE page_views ADD COLUMN IF NOT EXISTS is_returning INTEGER DEFAULT 0;
                 CREATE INDEX IF NOT EXISTS idx_visit_date     ON page_views(visit_date);
                 CREATE INDEX IF NOT EXISTS idx_visit_month    ON page_views(visit_month);
                 CREATE INDEX IF NOT EXISTS idx_visitor_hash   ON page_views(visitor_hash);
+                CREATE INDEX IF NOT EXISTS idx_visitor_id     ON page_views(visitor_id);
                 CREATE INDEX IF NOT EXISTS idx_page           ON page_views(page);
             ");
         } else {
@@ -87,11 +93,18 @@ class AnalyticsDB {
                     referrer     TEXT NOT NULL DEFAULT 'Direct',
                     visit_date   TEXT NOT NULL,
                     visit_month  TEXT NOT NULL,
-                    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+                    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    visitor_id   TEXT,
+                    is_returning INTEGER DEFAULT 0
                 );
+            ");
+            try { $pdo->exec("ALTER TABLE page_views ADD COLUMN visitor_id TEXT;"); } catch (\Exception $e) {}
+            try { $pdo->exec("ALTER TABLE page_views ADD COLUMN is_returning INTEGER DEFAULT 0;"); } catch (\Exception $e) {}
+            $pdo->exec("
                 CREATE INDEX IF NOT EXISTS idx_visit_date   ON page_views(visit_date);
                 CREATE INDEX IF NOT EXISTS idx_visit_month  ON page_views(visit_month);
                 CREATE INDEX IF NOT EXISTS idx_visitor_hash ON page_views(visitor_hash);
+                CREATE INDEX IF NOT EXISTS idx_visitor_id   ON page_views(visitor_id);
                 CREATE INDEX IF NOT EXISTS idx_page         ON page_views(page);
             ");
         }
@@ -99,28 +112,54 @@ class AnalyticsDB {
 
     /**
      * Record a new human page view.
+     * Accurately determines if visitor is Returning based on persistent cookie ID or visitor hash.
      */
-    public static function recordVisit(string $page, string $visitorHash, string $device, string $referrer): bool {
+    public static function recordVisit(
+        string $page,
+        string $visitorHash,
+        string $device,
+        string $referrer,
+        ?string $visitorId = null,
+        ?bool $clientIsNew = null
+    ): bool {
         try {
             $pdo       = self::getPDO();
             $today     = date('Y-m-d');
             $thisMonth = date('Y-m');
-            // Always store UTC timestamp so formatPhtTime() can convert correctly
             $utcNow    = gmdate('Y-m-d H:i:s');
 
+            $isReturning = 0;
+            if (!empty($visitorId)) {
+                $checkStmt = $pdo->prepare("SELECT 1 FROM page_views WHERE visitor_id = :vid LIMIT 1");
+                $checkStmt->execute([':vid' => $visitorId]);
+                if ($checkStmt->fetchColumn()) {
+                    $isReturning = 1;
+                } elseif ($clientIsNew === false) {
+                    $isReturning = 1;
+                }
+            } else {
+                $checkStmt = $pdo->prepare("SELECT 1 FROM page_views WHERE visitor_hash = :hash LIMIT 1");
+                $checkStmt->execute([':hash' => $visitorHash]);
+                if ($checkStmt->fetchColumn()) {
+                    $isReturning = 1;
+                }
+            }
+
             $stmt = $pdo->prepare("
-                INSERT INTO page_views (page, visitor_hash, device, referrer, visit_date, visit_month, created_at)
-                VALUES (:page, :hash, :device, :referrer, :date, :month, :created_at)
+                INSERT INTO page_views (page, visitor_hash, device, referrer, visit_date, visit_month, created_at, visitor_id, is_returning)
+                VALUES (:page, :hash, :device, :referrer, :date, :month, :created_at, :visitor_id, :is_returning)
             ");
 
             return $stmt->execute([
-                ':page'       => substr(trim($page), 0, 50) ?: 'unknown',
-                ':hash'       => $visitorHash,
-                ':device'     => in_array($device, ['Desktop', 'Mobile', 'Tablet'], true) ? $device : 'Desktop',
-                ':referrer'   => substr(trim($referrer), 0, 100) ?: 'Direct',
-                ':date'       => $today,
-                ':month'      => $thisMonth,
-                ':created_at' => $utcNow,
+                ':page'         => substr(trim($page), 0, 50) ?: 'unknown',
+                ':hash'         => $visitorHash,
+                ':device'       => in_array($device, ['Desktop', 'Mobile', 'Tablet'], true) ? $device : 'Desktop',
+                ':referrer'     => substr(trim($referrer), 0, 100) ?: 'Direct',
+                ':date'         => $today,
+                ':month'        => $thisMonth,
+                ':created_at'   => $utcNow,
+                ':visitor_id'   => $visitorId,
+                ':is_returning' => $isReturning,
             ]);
         } catch (\Exception $e) {
             error_log('AnalyticsDB Error: ' . $e->getMessage());
@@ -141,6 +180,15 @@ class AnalyticsDB {
         $stmt->execute([':d' => $today]);
         $todayStats = $stmt->fetch() ?: ['total' => 0, 'unique_v' => 0];
 
+        // Today New vs Returning
+        $todayNewStmt = $pdo->prepare('SELECT COUNT(*) FROM page_views WHERE visit_date = :d AND (is_returning = 0 OR is_returning IS NULL)');
+        $todayNewStmt->execute([':d' => $today]);
+        $todayNew = (int)$todayNewStmt->fetchColumn();
+
+        $todayRetStmt = $pdo->prepare('SELECT COUNT(*) FROM page_views WHERE visit_date = :d AND is_returning = 1');
+        $todayRetStmt->execute([':d' => $today]);
+        $todayReturning = (int)$todayRetStmt->fetchColumn();
+
         // This Month
         $stmt = $pdo->prepare('SELECT COUNT(*) as total, COUNT(DISTINCT visitor_hash) as unique_v FROM page_views WHERE visit_month = :m');
         $stmt->execute([':m' => $thisMonth]);
@@ -149,6 +197,14 @@ class AnalyticsDB {
         // All Time Total
         $totalStmt    = $pdo->query('SELECT COUNT(*) as total, COUNT(DISTINCT visitor_hash) as unique_v FROM page_views');
         $allTimeStats = $totalStmt->fetch() ?: ['total' => 0, 'unique_v' => 0];
+
+        // All Time Unique Returning Visitors
+        $retUniqueStmt = $pdo->query("
+            SELECT COUNT(DISTINCT COALESCE(NULLIF(visitor_id, ''), visitor_hash))
+            FROM page_views
+            WHERE is_returning = 1
+        ");
+        $returningUnique = (int)($retUniqueStmt ? $retUniqueStmt->fetchColumn() : 0);
 
         // Breakdown by Page
         $pageStmt = $pdo->query('SELECT page, COUNT(*) as total, COUNT(DISTINCT visitor_hash) as unique_v FROM page_views GROUP BY page ORDER BY total DESC LIMIT 10');
@@ -159,7 +215,7 @@ class AnalyticsDB {
         $devices    = $deviceStmt->fetchAll();
 
         // Top Referrers
-        $refStmt  = $pdo->query('SELECT referrer, COUNT(*) as total FROM page_views GROUP BY referrer ORDER BY total DESC LIMIT 8');
+        $refStmt   = $pdo->query('SELECT referrer, COUNT(*) as total FROM page_views GROUP BY referrer ORDER BY total DESC LIMIT 8');
         $referrers = $refStmt->fetchAll();
 
         // Last 14 Days Trend (Manila Timezone)
@@ -193,7 +249,7 @@ class AnalyticsDB {
 
         // Recent 25 Pageviews
         $recentStmt = $pdo->query('
-            SELECT page, device, referrer, created_at
+            SELECT page, device, referrer, created_at, visitor_id, is_returning
             FROM page_views
             ORDER BY id DESC
             LIMIT 25
@@ -201,9 +257,18 @@ class AnalyticsDB {
         $recent = $recentStmt->fetchAll();
 
         return [
-            'today'       => ['total' => (int)$todayStats['total'],    'unique' => (int)$todayStats['unique_v']],
+            'today'       => [
+                'total'     => (int)$todayStats['total'],
+                'unique'    => (int)$todayStats['unique_v'],
+                'new'       => $todayNew,
+                'returning' => $todayReturning,
+            ],
             'month'       => ['total' => (int)$monthStats['total'],    'unique' => (int)$monthStats['unique_v']],
-            'all_time'    => ['total' => (int)$allTimeStats['total'],  'unique' => (int)$allTimeStats['unique_v']],
+            'all_time'    => [
+                'total'            => (int)$allTimeStats['total'],
+                'unique'           => (int)$allTimeStats['unique_v'],
+                'returning_unique' => $returningUnique,
+            ],
             'pages'       => $pages,
             'devices'     => $devices,
             'referrers'   => $referrers,

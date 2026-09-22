@@ -15,6 +15,37 @@
     }
     sessionStorage.setItem(lastTrackKey, now.toString());
 
+    // ── Cookie-based Visitor ID ─────────────────────────────────────────────
+    // Generates a persistent UUID stored in a 1-year cookie.
+    // Returning visitors will have the same ID on subsequent visits.
+    function getCookie(name) {
+      var match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+      return match ? decodeURIComponent(match[1]) : null;
+    }
+    function setCookie(name, value, days) {
+      var expires = new Date(Date.now() + days * 864e5).toUTCString();
+      document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+    }
+    function generateUUID() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      // Fallback for older browsers
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+
+    var COOKIE_NAME = 'rx_vid';
+    var visitorId = getCookie(COOKIE_NAME);
+    var isNewVisitor = !visitorId;
+    if (!visitorId) {
+      visitorId = generateUUID();
+      setCookie(COOKIE_NAME, visitorId, 365); // 1 year
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     // Device Category Detection
     var ua = navigator.userAgent || '';
     var isMobile = /Android|iPhone|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
@@ -47,7 +78,9 @@
     var payload = JSON.stringify({
       page: pageName,
       device: device,
-      referrer: referrer
+      referrer: referrer,
+      visitor_id: visitorId,
+      is_new: isNewVisitor
     });
 
     if (navigator.sendBeacon) {
@@ -65,4 +98,3 @@
     // Fail silently so user experience is never impacted
   }
 })();
-

@@ -48,6 +48,24 @@ $data = json_decode($rawBody, true) ?: [];
 $page = $data['page'] ?? $_POST['page'] ?? $_GET['page'] ?? 'homepage';
 $device = $data['device'] ?? $_POST['device'] ?? $_GET['device'] ?? 'Desktop';
 $referrer = $data['referrer'] ?? $_POST['referrer'] ?? $_GET['referrer'] ?? 'Direct';
+$visitorId = $data['visitor_id'] ?? $_POST['visitor_id'] ?? $_GET['visitor_id'] ?? ($_COOKIE['rx_vid'] ?? '');
+$isNewClient = isset($data['is_new']) ? (bool)$data['is_new'] : null;
+
+// Sanitize visitorId (alphanumeric, dash, underscore)
+$visitorId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$visitorId);
+if (strlen($visitorId) < 8 || strlen($visitorId) > 64) {
+    $visitorId = bin2hex(random_bytes(16));
+}
+
+// Ensure cookie is set in browser as fallback
+if (!isset($_COOKIE['rx_vid'])) {
+    setcookie('rx_vid', $visitorId, [
+        'expires'  => time() + (365 * 86400),
+        'path'     => '/',
+        'samesite' => 'Lax',
+        'httponly' => false
+    ]);
+}
 
 // Anonymized Visitor Hash (Salted SHA-256 of IP + UA)
 $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] 
@@ -58,7 +76,7 @@ $ip = trim(explode(',', $ip)[0]);
 $salt = 'rx_editor_analytics_salt_secure_2026';
 $visitorHash = hash('sha256', $ip . '|' . $userAgent . '|' . $salt);
 
-// Record in SQLite
-$success = AnalyticsDB::recordVisit($page, $visitorHash, $device, $referrer);
+// Record in Database with cookie visitor_id
+$success = AnalyticsDB::recordVisit($page, $visitorHash, $device, $referrer, $visitorId, $isNewClient);
 
-echo json_encode(['status' => $success ? 'ok' : 'error']);
+echo json_encode(['status' => $success ? 'ok' : 'error', 'vid' => $visitorId]);

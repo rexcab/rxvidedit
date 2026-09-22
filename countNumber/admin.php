@@ -45,15 +45,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="rxwithcode_analytics_' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID', 'Page', 'Device', 'Referrer', 'Date (PHT)', 'Month (PHT)', 'Timestamp (PHT)']);
+    fputcsv($out, ['ID', 'Page', 'Device', 'Visitor Type', 'Cookie ID', 'Referrer', 'Date (PHT)', 'Month (PHT)', 'Timestamp (PHT)']);
     
     $pdo = AnalyticsDB::getPDO();
-    $stmt = $pdo->query("SELECT id, page, device, referrer, visit_date, visit_month, created_at FROM page_views ORDER BY id DESC LIMIT 5000");
+    $stmt = $pdo->query("SELECT id, page, device, is_returning, visitor_id, referrer, visit_date, visit_month, created_at FROM page_views ORDER BY id DESC LIMIT 5000");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         fputcsv($out, [
             $row['id'],
             $row['page'],
             $row['device'],
+            !empty($row['is_returning']) ? 'Returning' : 'New',
+            $row['visitor_id'] ?? '',
             $row['referrer'],
             $row['visit_date'],
             $row['visit_month'],
@@ -529,6 +531,28 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
       color: #6ee7b7;
     }
 
+    .pill-returning {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      background: rgba(236, 72, 153, 0.15);
+      color: #f472b6;
+      border: 1px solid rgba(236, 72, 153, 0.3);
+    }
+
+    .pill-new {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
     /* Responsive */
     @media (max-width: 640px) {
       .dash-header { flex-direction: column; align-items: flex-start; }
@@ -617,9 +641,14 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
           <span class="metric-icon">📅</span>
         </div>
         <div class="metric-number"><?= number_format($stats['today']['total']) ?></div>
-        <div class="metric-sub">
-          <span class="badge-unique"><?= number_format($stats['today']['unique']) ?> Unique</span>
-          <span>human visitors today</span>
+        <div class="metric-sub" style="display:flex; flex-direction:column; align-items:flex-start; gap:4px;">
+          <div>
+            <span class="badge-unique"><?= number_format($stats['today']['unique']) ?> Unique</span>
+            <span>human visitors today</span>
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">
+            ✨ <strong style="color:#93c5fd;"><?= number_format($stats['today']['new'] ?? 0) ?> New</strong> · 🔁 <strong style="color:#f472b6;"><?= number_format($stats['today']['returning'] ?? 0) ?> Returning</strong>
+          </div>
         </div>
       </div>
 
@@ -646,6 +675,22 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
         <div class="metric-sub">
           <span class="badge-unique"><?= number_format($stats['all_time']['unique']) ?> Unique</span>
           <span>lifetime visitors</span>
+        </div>
+      </div>
+
+      <!-- Visitor Loyalty Card (Cookie Verified) -->
+      <div class="metric-card" style="position: relative;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ec4899, #f43f5e);"></div>
+        <div class="metric-header">
+          <span class="metric-label">Returning Users</span>
+          <span class="metric-icon">🍪</span>
+        </div>
+        <div class="metric-number" style="color: #f472b6;">
+          <?= number_format($stats['all_time']['returning_unique'] ?? 0) ?>
+        </div>
+        <div class="metric-sub" style="font-size: 0.78rem; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+          <span>Unique devices returned back</span>
+          <span style="color: #34d399; font-weight: 600;">✓ Verified by 1-year browser cookie</span>
         </div>
       </div>
 
@@ -782,6 +827,7 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
         <thead>
           <tr>
             <th>Time (PHT)</th>
+            <th>Visitor Type</th>
             <th>Page / Tool</th>
             <th>Device</th>
             <th>Referrer</th>
@@ -789,12 +835,24 @@ $selfUrl = htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php'));
         </thead>
         <tbody>
           <?php if (empty($stats['recent'])): ?>
-            <tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:20px;">No visitor logs yet. Once visitors arrive, they will appear here.</td></tr>
+            <tr><td colspan="5" style="color:var(--text-muted); text-align:center; padding:20px;">No visitor logs yet. Once visitors arrive, they will appear here.</td></tr>
           <?php else: ?>
             <?php foreach ($stats['recent'] as $log): ?>
               <tr>
                 <td style="color:var(--text-muted); font-size:0.8rem; font-family:'JetBrains Mono',monospace; white-space:nowrap;">
                   <?= htmlspecialchars(formatPhtTime($log['created_at'])) ?>
+                </td>
+                <td>
+                  <?php if (!empty($log['is_returning'])): ?>
+                    <span class="pill-returning" title="Returning User (Cookie ID: <?= htmlspecialchars($log['visitor_id'] ?? '') ?>)">🔁 Returning</span>
+                  <?php else: ?>
+                    <span class="pill-new" title="First Time Visitor (Cookie ID: <?= htmlspecialchars($log['visitor_id'] ?? '') ?>)">✨ New</span>
+                  <?php endif; ?>
+                  <?php if (!empty($log['visitor_id'])): ?>
+                    <span style="font-size:0.68rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; display:block; margin-top:2px;" title="Persistent Device Cookie: <?= htmlspecialchars($log['visitor_id']) ?>">
+                      #<?= htmlspecialchars(substr($log['visitor_id'], 0, 8)) ?>
+                    </span>
+                  <?php endif; ?>
                 </td>
                 <td><span class="pill-page"><?= htmlspecialchars($log['page']) ?></span></td>
                 <td><span class="pill-device"><?= htmlspecialchars($log['device']) ?></span></td>
