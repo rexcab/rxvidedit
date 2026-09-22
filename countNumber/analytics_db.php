@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Analytics Database Handler
  * Uses Supabase (PostgreSQL) when DATABASE_URL env var is set.
